@@ -24,7 +24,10 @@ ID_TO_SPECIAL_TOKEN: Dict[int, str] = {
 
 
 class SimpleUniTokenizer:
-    def __init__(self, truncation_side: str = "left"):
+    def __init__(self,
+                 truncation_side: str = "left",
+                 add_bos_token=True,
+                 add_eos_token=False):
         self.pad_token = chr(SPECIAL_TOKEN_TO_ID["<pad>"])
         self.bos_token = chr(SPECIAL_TOKEN_TO_ID["<s>"])
         self.eos_token = chr(SPECIAL_TOKEN_TO_ID["</s>"])
@@ -33,13 +36,16 @@ class SimpleUniTokenizer:
         self.cls_token = chr(SPECIAL_TOKEN_TO_ID["<cls>"])
         self.mask_token = chr(SPECIAL_TOKEN_TO_ID["<mask>"])
 
-        self.pad_token_id = SPECIAL_TOKEN_TO_ID[self.pad_token]
-        self.bos_token_id = SPECIAL_TOKEN_TO_ID[self.bos_token]
-        self.eos_token_id = SPECIAL_TOKEN_TO_ID[self.eos_token]
-        self.unk_token_id = SPECIAL_TOKEN_TO_ID[self.unk_token]
-        self.sep_token_id = SPECIAL_TOKEN_TO_ID[self.sep_token]
-        self.cls_token_id = SPECIAL_TOKEN_TO_ID[self.cls_token]
-        self.mask_token_id = SPECIAL_TOKEN_TO_ID[self.mask_token]
+        self.pad_token_id = SPECIAL_TOKEN_TO_ID["<pad>"]
+        self.bos_token_id = SPECIAL_TOKEN_TO_ID["<s>"]
+        self.eos_token_id = SPECIAL_TOKEN_TO_ID["</s>"]
+        self.unk_token_id = SPECIAL_TOKEN_TO_ID["<unk>"]
+        self.sep_token_id = SPECIAL_TOKEN_TO_ID["<sep>"]
+        self.cls_token_id = SPECIAL_TOKEN_TO_ID["<cls>"]
+        self.mask_token_id = SPECIAL_TOKEN_TO_ID["<mask>"]
+
+        self.add_bos_token = add_bos_token
+        self.add_eos_token = add_eos_token
 
         self._unicode_vocab_size = UNICODE_CODE_POINTS
         self._num_special_tokens = len(SPECIAL_TOKEN_TO_ID)
@@ -66,15 +72,20 @@ class SimpleUniTokenizer:
     ) -> Union[List[int], List[List[int]]]:
 
         if isinstance(text, str):
-            tokenized_text = [self.tokenize(text)]
+            tokenized_text = self.tokenize(text)
+            return self.encode(tokenized_text,
+                               add_special_tokens=add_special_tokens,
+                               truncation=truncation,
+                               max_length=max_length,
+                               pad_to_max_length=pad_to_max_length)
         else:
             tokenized_text = [self.tokenize(t) for t in text]
 
-        return self.encode_batch(tokenized_text,
-                                 add_special_tokens=add_special_tokens,
-                                 truncation=truncation,
-                                 max_length=max_length,
-                                 pad_to_max_length=pad_to_max_length)
+            return self.encode_batch(tokenized_text,
+                                     add_special_tokens=add_special_tokens,
+                                     truncation=truncation,
+                                     max_length=max_length,
+                                     pad_to_max_length=pad_to_max_length)
 
     def tokenize(self, text: str) -> List[str]:
         # return self.pattern.findall(text)
@@ -92,11 +103,14 @@ class SimpleUniTokenizer:
             max_length: int,
             add_special_tokens: bool = True
     ) -> List[int]:
+        num_special_tokens = 0
+        num_special_tokens += 1 if self.add_bos_token else 0
+        num_special_tokens += 1 if self.add_eos_token else 0
 
         if self.truncation_side == "left":
-            truncated_ids = ids[-max_length + 2:] if add_special_tokens else ids[-max_length:]
+            truncated_ids = ids[-max_length + num_special_tokens:] if add_special_tokens else ids[-max_length:]
         else:
-            truncated_ids = ids[:max_length - 2] if add_special_tokens else ids[:max_length]
+            truncated_ids = ids[:max_length - num_special_tokens] if add_special_tokens else ids[:max_length]
         return truncated_ids
 
     def pad(self, ids: List[int], max_length: int) -> List[int]:
@@ -123,7 +137,9 @@ class SimpleUniTokenizer:
             token_ids = self.truncate_sequences(token_ids, max_length, add_special_tokens)
 
         if add_special_tokens:
-            token_ids = [self.bos_token_id] + token_ids + [self.eos_token_id]
+            bos_token_id = [self.bos_token_id] if self.add_bos_token else []
+            eos_token_id = [self.eos_token_id] if self.add_eos_token else []
+            token_ids = bos_token_id + token_ids + eos_token_id
 
         if pad_to_max_length and max_length is not None:
             token_ids = self.pad(token_ids, max_length)

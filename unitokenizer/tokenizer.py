@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 from transformers.tokenization_utils import AddedToken, PreTrainedTokenizer
 
 UNICODE_CODE_POINTS = 1114112
@@ -32,11 +32,13 @@ class UniTokenizer(PreTrainedTokenizer):
                  pad_token=chr(SPECIAL_TOKEN_TO_ID["<pad>"]),
                  mask_token=chr(SPECIAL_TOKEN_TO_ID["<mask>"]),
                  unk_token=chr(SPECIAL_TOKEN_TO_ID["<unk>"]),
-                 add_prefix_space=False,
+                 add_bos_token=True,
+                 add_eos_token=False,
+                 add_prefix_space=True,
                  model_max_length=512,
                  **kwargs, ):
 
-        bos_token = AddedToken(bos_token, lstrip=False, rstrip=False) if isinstance(bos_token, str) else bos_token
+        bos_token = AddedToken(bos_token, lstrip=False, rstrip=False)  # if isinstance(bos_token, str) else bos_token
         eos_token = AddedToken(eos_token, lstrip=False, rstrip=False) if isinstance(eos_token, str) else eos_token
         sep_token = AddedToken(sep_token, lstrip=False, rstrip=False) if isinstance(sep_token, str) else sep_token
         cls_token = AddedToken(cls_token, lstrip=False, rstrip=False) if isinstance(cls_token, str) else cls_token
@@ -44,9 +46,11 @@ class UniTokenizer(PreTrainedTokenizer):
         mask_token = AddedToken(mask_token, lstrip=True, rstrip=False) if isinstance(mask_token, str) else mask_token
         unk_token = AddedToken(unk_token, lstrip=False, rstrip=False) if isinstance(unk_token, str) else unk_token
 
-        self.model_max_length = model_max_length
+        self.add_bos_token = add_bos_token
+        self.add_eos_token = add_eos_token
 
         self._unicode_vocab_size = UNICODE_CODE_POINTS
+        self.model_max_length = model_max_length
 
         self._special_token_to_id = {chr(k): k for k in ID_TO_SPECIAL_TOKEN.keys()}
         self._id_to_special_token = ID_TO_SPECIAL_TOKEN
@@ -59,6 +63,8 @@ class UniTokenizer(PreTrainedTokenizer):
             pad_token=pad_token,
             mask_token=mask_token,
             unk_token=unk_token,
+            add_bos_token=add_bos_token,
+            add_eos_token=add_eos_token,
             add_prefix_space=add_prefix_space,
             model_max_length=model_max_length,
             **kwargs,
@@ -85,18 +91,35 @@ class UniTokenizer(PreTrainedTokenizer):
     def convert_tokens_to_string(self, tokens):
         return "".join(tokens)
 
+    def convert_ids_to_tokens(
+            self, ids: Union[int, List[int]], skip_special_tokens: bool = False
+    ) -> Union[str, List[str]]:
+        """
+        Converts special tokens to human-readable format
+        """
+        if isinstance(ids, int):
+            return self._convert_id_to_token(ids)
+        tokens = []
+        for index in ids:
+            index = int(index)
+            if skip_special_tokens and index in self.all_special_ids:
+                continue
+            tokens.append(self._convert_id_to_token(index))
+        return tokens
+
     def build_inputs_with_special_tokens(
             self,
-            token_ids_0: List[int],
-            token_ids_1: Optional[List[int]] = None
+            token_ids_0,
+            token_ids_1=None
     ) -> List[int]:
+        bos_token_id = [self.bos_token_id] if self.add_bos_token else []
+        eos_token_id = [self.eos_token_id] if self.add_eos_token else []
 
-        sep = [self.sep_token_id]
-        cls = [self.cls_token_id]
+        result = bos_token_id + token_ids_0 + eos_token_id
 
-        result = cls + token_ids_0 + sep
         if token_ids_1 is not None:
-            result += token_ids_1 + sep
+            result = result + bos_token_id + token_ids_1 + eos_token_id
+
         return result
 
     def get_special_tokens_mask(
